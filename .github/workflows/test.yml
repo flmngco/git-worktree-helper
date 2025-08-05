@@ -1,0 +1,231 @@
+name: Security and Functionality Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  security-test:
+    name: Security and Functionality Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Build test container
+      run: docker build -t gw-test .
+    
+    - name: Run security tests in container
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}/gw.sh:/workspace/gw.sh:ro \
+          gw-test
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: test-results/
+  
+  shellcheck:
+    name: ShellCheck Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run ShellCheck
+      uses: ludeeus/action-shellcheck@master
+      with:
+        scandir: '.'
+        format: gcc
+        severity: warning
+        check_together: 'yes'
+        additional_files: 'gw.sh'
+    
+    - name: ShellCheck results
+      if: failure()
+      run: echo "ShellCheck found issues. Please review the annotations above."
+  
+  multi-shell-test:
+    name: Test on Multiple Shells
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shell: [bash, zsh]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install shells
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ${{ matrix.shell }}
+    
+    - name: Test with ${{ matrix.shell }}
+      run: |
+        docker build -f - -t gw-${{ matrix.shell }}-test . <<EOF
+        FROM ubuntu:22.04
+        RUN apt-get update && apt-get install -y git ${{ matrix.shell }} python3
+        RUN git config --global user.email "test@example.com" && \
+            git config --global user.name "Test User" && \
+            git config --global init.defaultBranch main
+        COPY gw.sh /workspace/gw.sh
+        COPY test.sh /workspace/test.sh
+        RUN chmod +x /workspace/test.sh
+        WORKDIR /workspace
+        RUN useradd -m testuser && chown -R testuser /workspace
+        USER testuser
+        RUN mkdir -p /home/testuser/test-repos
+        WORKDIR /home/testuser/test-repos
+        CMD ["${{ matrix.shell }}", "/workspace/test.sh"]
+        EOF
+        
+        docker run --rm gw-${{ matrix.shell }}-test
+
+  injection-test:
+    name: Injection Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Create injection test script
+      run: |
+        cat > injection-test.sh << 'EOF'
+        #!/bin/bash
+        set -euo pipefail
+        
+        source /workspace/gw.sh
+        
+        echo "=== Injection Tests ==="
+        
+        # Test function to check if injection occurred
+        check_injection() {
+            local test_name="$1"
+            local payload="$2"
+            
+            # Create a canary file that should not be touched
+            touch /tmp/canary_file_$$.txt
+            
+            # Try the injection
+            set +e
+            _gw_validate_name "$payload" 2>/dev/null
+            result=$?
+            set -e
+            
+            # Check if canary is still there and nothing was created
+            if [ -f /tmp/canary_file_$$.txt ] && [ "$result" -ne 0 ]; then
+                echo "✓ Blocked: $test_name"
+                rm -f /tmp/canary_file_$$.txt
+                return 0
+            else
+                echo "✗ FAILED TO BLOCK: $test_name"
+                rm -f /tmp/canary_file_$$.txt
+                return 1
+            fi
+        }
+        
+        # Collection of injection payloads
+        check_injection "Command substitution 1" "\$(touch /tmp/pwned)"
+        check_injection "Command substitution 2" "\`touch /tmp/pwned\`"
+        check_injection "Pipe injection" "test|touch /tmp/pwned"
+        check_injection "Semicolon injection" "test;touch /tmp/pwned"
+        check_injection "AND injection" "test&&touch /tmp/pwned"
+        check_injection "OR injection" "test||touch /tmp/pwned"
+        check_injection "Redirect injection" "test>/tmp/pwned"
+        check_injection "Background injection" "test&touch /tmp/pwned"
+        check_injection "Newline injection" "test\ntouch /tmp/pwned"
+        check_injection "Tab injection" "test\ttouch /tmp/pwned"
+        check_injection "Null byte injection" "test\x00touch /tmp/pwned"
+        
+        echo "=== Injection tests completed ==="
+        EOF
+        chmod +x injection-test.sh
+    
+    - name: Run injection tests in isolated container
+      run: |
+        docker build -f - -t gw-injection-test . <<EOF
+        FROM ubuntu:22.04
+        RUN apt-get update && apt-get install -y git bash
+        COPY gw.sh /workspace/gw.sh
+        COPY injection-test.sh /workspace/injection-test.sh
+        RUN chmod +x /workspace/injection-test.sh
+        RUN useradd -m testuser
+        USER testuser
+        WORKDIR /workspace
+        CMD ["/workspace/injection-test.sh"]
+        EOF
+        
+        docker run --rm --read-only --tmpfs /tmp gw-injection-test
+
+  performance-test:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Performance test with many worktrees
+      run: |
+        cat > perf-test.sh << 'EOF'
+        #!/bin/bash
+        set -euo pipefail
+        
+        source /workspace/gw.sh
+        
+        # Create test repo
+        mkdir test-repo && cd test-repo
+        git init
+        echo "test" > README.md
+        git add README.md
+        git commit -m "Initial"
+        
+        echo "Creating 50 worktrees..."
+        start_time=$(date +%s)
+        
+        for i in {1..50}; do
+            gw create "branch-$i" >/dev/null 2>&1
+        done
+        
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+        
+        echo "Created 50 worktrees in ${duration} seconds"
+        
+        # Test listing performance
+        start_time=$(date +%s)
+        gw list >/dev/null 2>&1
+        end_time=$(date +%s)
+        list_duration=$((end_time - start_time))
+        
+        echo "Listed worktrees in ${list_duration} seconds"
+        
+        # Cleanup
+        echo "yes" | gw clean >/dev/null 2>&1
+        
+        if [ "$duration" -gt 60 ]; then
+            echo "WARNING: Creation took more than 60 seconds"
+            exit 1
+        fi
+        
+        echo "Performance test passed"
+        EOF
+        chmod +x perf-test.sh
+        
+        docker run --rm \
+          -v ${{ github.workspace }}/gw.sh:/workspace/gw.sh:ro \
+          -v ${{ github.workspace }}/perf-test.sh:/workspace/perf-test.sh:ro \
+          -w /workspace \
+          ubuntu:22.04 \
+          bash -c "apt-get update && apt-get install -y git && git config --global user.email test@test.com && git config --global user.name Test && /workspace/perf-test.sh"
