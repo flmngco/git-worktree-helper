@@ -15,9 +15,9 @@ Git worktrees are a game-changer for parallel development. Unlike regular branch
 ## Features
 
 - **Three directory strategies** - Choose how worktrees are organized:
-  - **Sibling** (default): `repo/../repo-worktrees/feature`
-  - **Parent**: `repo-parent/main/` and `repo-parent/worktrees/feature`
-  - **Global**: `~/code/worktrees/repo-feature`
+  - **Sibling** (default): Keeps your repo untouched at `repo/`, creates worktrees at `repo-worktrees/feature`
+  - **Parent**: Moves your repo to `repo-parent/main/`, creates worktrees at `repo-parent/worktrees/feature`
+  - **Global**: Keeps your repo untouched, creates all worktrees in a central location like `~/code/worktrees/repo-feature`
 - **Per-repo configuration** - Different strategies for different projects
 - **Safety first** - Confirmations for destructive operations
 - **Shell completion** - Tab completion for Bash and Zsh
@@ -184,19 +184,21 @@ The tool offers three different strategies for organizing your worktrees. Each h
 
 ### Sibling Strategy (Default)
 
-Worktrees live alongside your main repository as siblings in the parent directory:
+Your main repository **stays exactly where it is**, and worktrees are created in a sibling directory next to it:
 
 ```
 ~/projects/
-├── myrepo/                  # Your main repository
-└── myrepo-worktrees/        # All worktrees for this repo
+├── myrepo/                  # Your ORIGINAL repo location (unchanged)
+└── myrepo-worktrees/        # New directory created as a sibling
     ├── feature-auth/
     ├── feature-payments/
     └── bugfix-header/
 ```
 
 **How it works:**
+- Your main repository remains at its original location
 - Creates a `-worktrees` directory next to your repo
+- The path `repo/../repo-worktrees/feature` means: from your repo, go up one level (`..`), then into `repo-worktrees/feature`
 - Each worktree is isolated from the main repository
 - Clean separation prevents git confusion
 
@@ -220,21 +222,22 @@ gw create feature-new    # Creates ~/projects/myrepo-worktrees/feature-new
 
 ### Parent Strategy
 
-Creates a parent container that holds both your main repository and all its worktrees:
+Creates a parent container that holds both your main repository and all its worktrees. **This requires moving your existing repository into a new structure**:
 
 ```
-~/projects/myrepo-parent/    # Container directory
-├── main/                    # Your main repository (renamed)
-└── worktrees/              # All worktrees
+~/projects/myrepo-parent/    # New container directory
+├── main/                    # Your repo MOVED here (was at ~/projects/myrepo)
+└── worktrees/               # All worktrees go here
     ├── feature-auth/
     ├── feature-payments/
     └── bugfix-header/
 ```
 
 **How it works:**
+- Creates a new parent container directory
+- **Your main repository must be moved** from its original location (e.g., `~/projects/myrepo`) into the `main/` subdirectory
+- All worktrees are grouped in the `worktrees/` subdirectory
 - Everything related to the project lives in one parent directory
-- Main repo typically lives in a `main/` subdirectory
-- All worktrees grouped in `worktrees/` subdirectory
 
 **Pros:**
 - Everything is self-contained in one directory
@@ -251,12 +254,15 @@ Creates a parent container that holds both your main repository and all its work
 
 **Migration example:**
 ```bash
-# Starting with: ~/projects/myrepo
+# Starting with repo at: ~/projects/myrepo
+mkdir -p ~/projects/myrepo-parent
 mv ~/projects/myrepo ~/projects/myrepo-parent/main
 cd ~/projects/myrepo-parent/main
 gw config parent
 gw create feature-new    # Creates ~/projects/myrepo-parent/worktrees/feature-new
 ```
+
+**Key difference from Sibling:** While both strategies end up with worktrees as siblings to the main repo, the Parent strategy adds an extra container level and **requires moving your repository**, whereas Sibling leaves your repo exactly where it is.
 
 ### Global Strategy
 
@@ -301,11 +307,24 @@ gw config global
 gw create feature-new    # Creates ~/workspace/active/myrepo-feature-new
 ```
 
+### Key Differences Between Strategies
+
+The most common confusion is between **Sibling** and **Parent** strategies:
+
+| Aspect | Sibling | Parent |
+|--------|---------|--------|
+| **Main repo location** | Stays at original path | Must be moved to `parent/main/` |
+| **Setup required** | None | Must restructure existing repos |
+| **Directory structure** | Flat (repo and worktrees are siblings) | Nested (everything in container) |
+| **Path from repo to worktree** | `../repo-worktrees/feature` | `../worktrees/feature` |
+| **Impact on existing setup** | Zero - just works | Requires moving your repository |
+
 ### Choosing the Right Strategy
 
 | If you... | Choose... | Why |
 |-----------|-----------|-----|
 | Want it to just work | **Sibling** | No configuration, no surprises |
+| Don't want to move your repo | **Sibling** | Keeps repo at original location |
 | Are starting a new project | **Parent** | Design for organization from the start |
 | Work on many repos simultaneously | **Global** | See all your WIP in one place |
 | Share repos with a team | **Sibling** | Others won't be confused by your structure |
