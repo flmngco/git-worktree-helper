@@ -400,12 +400,12 @@ gw config <TAB>    # Shows strategy options
 
 ### Quick Feature Development
 ```bash
-# Start new feature (traditional way)
+# Start new feature
 gw create feature-awesome
 gw cd feature-awesome
 # ... develop feature ...
 
-# Or use the new 'go' command for one-step creation + navigation
+# Or use the 'go' command for one-step creation + navigation
 gw go feature-awesome
 # ... develop feature ...
 
@@ -418,12 +418,7 @@ gw rm feature-awesome
 
 ### Parallel Development
 ```bash
-# Work on multiple features simultaneously (traditional way)
-gw create feature-1 && gw cd feature-1  # Terminal 1
-gw create feature-2 && gw cd feature-2  # Terminal 2
-gw create bugfix-1 && gw cd bugfix-1    # Terminal 3
-
-# Or use the 'go' command for streamlined workflow
+# Work on multiple features simultaneously
 gw go feature-1    # Terminal 1
 gw go feature-2    # Terminal 2  
 gw go bugfix-1     # Terminal 3
