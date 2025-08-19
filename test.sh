@@ -102,13 +102,30 @@ run_test "Navigate to worktree" "gw cd feature-test && pwd | grep -q feature-tes
 # Go back to main repo
 cd /home/testuser/test-repos/test-repo
 
+# Test the new 'go' command
+run_test "Go to existing worktree" "gw go feature-test && pwd | grep -q feature-test" 0
+
+# Go back to main repo
+cd /home/testuser/test-repos/test-repo
+
+# Test 'go' command creating new worktree
+run_test "Go command creates new worktree" "gw go feature-go-test && pwd | grep -q feature-go-test" 0
+
+# Go back to main repo  
+cd /home/testuser/test-repos/test-repo
+
 # Test creating worktree with dangerous names (should be rejected)
 run_test "Reject worktree with path traversal" "gw create '../dangerous'" 1
 run_test "Reject worktree with command injection" "gw create 'test;rm -rf /'" 1
 run_test "Reject worktree with pipe" "gw create 'test|cat /etc/passwd'" 1
 
+# Test 'go' command with dangerous names (should be rejected)
+run_test "Go rejects path traversal" "gw go '../dangerous'" 1
+run_test "Go rejects command injection" "gw go 'test;rm -rf /'" 1
+
 # Test removal (provide 'y' for confirmation)
 run_test "Remove worktree" "echo y | gw rm feature-test" 0
+run_test "Remove go-created worktree" "echo y | gw rm feature-go-test" 0
 
 echo ""
 echo "=== Testing Configuration ==="

@@ -109,6 +109,20 @@ gw cd new-feature
 # Changes directory to the worktree
 ```
 
+### `gw go <name> [command...]`
+Create a worktree if it doesn't exist, navigate to it, and optionally run a command.
+
+```bash
+gw go new-feature
+# Creates worktree if needed and navigates to it
+
+gw go new-feature code .
+# Creates worktree if needed, navigates to it, and runs 'code .'
+
+gw go hotfix-123 cursor
+# Creates hotfix worktree, navigates to it, and starts cursor
+```
+
 ### `gw list`
 Shows all worktrees for the current repository.
 
@@ -377,6 +391,7 @@ Tab completion is automatically enabled for both Bash and Zsh:
 ```bash
 gw <TAB>           # Shows all commands
 gw cd <TAB>        # Shows all worktree names
+gw go <TAB>        # Shows all worktree names
 gw rm <TAB>        # Shows all worktree names
 gw config <TAB>    # Shows strategy options
 ```
@@ -385,9 +400,13 @@ gw config <TAB>    # Shows strategy options
 
 ### Quick Feature Development
 ```bash
-# Start new feature
+# Start new feature (traditional way)
 gw create feature-awesome
 gw cd feature-awesome
+# ... develop feature ...
+
+# Or use the new 'go' command for one-step creation + navigation
+gw go feature-awesome
 # ... develop feature ...
 
 # Switch back to main
@@ -399,10 +418,19 @@ gw rm feature-awesome
 
 ### Parallel Development
 ```bash
-# Work on multiple features simultaneously
+# Work on multiple features simultaneously (traditional way)
 gw create feature-1 && gw cd feature-1  # Terminal 1
 gw create feature-2 && gw cd feature-2  # Terminal 2
 gw create bugfix-1 && gw cd bugfix-1    # Terminal 3
+
+# Or use the 'go' command for streamlined workflow
+gw go feature-1    # Terminal 1
+gw go feature-2    # Terminal 2  
+gw go bugfix-1     # Terminal 3
+
+# Start development environment directly
+gw go feature-ui code .      # Creates worktree and opens VS Code
+gw go api-refactor cursor    # Creates worktree and opens Cursor
 ```
 
 ### Check Before Switching Strategy
