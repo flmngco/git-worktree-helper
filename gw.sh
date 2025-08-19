@@ -10,6 +10,7 @@
 #   gw create <name>     - Create a new worktree
 #   gw rm <name>         - Remove a worktree
 #   gw cd <name>         - Navigate to a worktree
+#   gw go <name> [cmd]   - Create worktree if needed, cd to it, run command
 #   gw list              - List all worktrees
 #   gw config [strategy] - Get/set strategy for current repo
 #   gw clean             - Remove all worktrees (with confirmation)
@@ -63,6 +64,7 @@ gw() {
         create)  _gw_create "$@" ;;
         rm|remove) _gw_remove "$@" ;;
         cd)      _gw_cd "$@" ;;
+        go|in)   _gw_go "$@" ;;
         list|ls) _gw_list "$@" ;;
         config)  _gw_config "$@" ;;
         clean)   _gw_clean "$@" ;;
@@ -79,6 +81,7 @@ Commands:
   create <name>                  Create a new worktree from current branch
   rm <name>                      Remove a worktree (with confirmation)
   cd <name>                      Navigate to a worktree
+  go <name> [command...]         Create worktree if needed, cd to it, run command
   list                           List all worktrees for current repo
   config [strategy]              Get/set worktree strategy for current repo
                                  Strategies: sibling (default), parent, global
@@ -89,6 +92,8 @@ Commands:
 Examples:
   gw create feature-x       # Create worktree 'feature-x'
   gw cd feature-x           # Navigate to worktree
+  gw go feature-x           # Create if needed and navigate to feature-x
+  gw go feature-x code .    # Create if needed, cd to it, and run 'code .'
   gw config parent          # Use parent directory strategy
   gw config --global global # Set global strategy as default
   gw rm feature-x           # Remove worktree
@@ -342,6 +347,42 @@ _gw_cd() {
     echo "Current directory: $(pwd)"
 }
 
+# Create worktree if needed, navigate to it, and run command
+_gw_go() {
+    local name="$1"
+    [ -z "$name" ] && { echo "Usage: gw go <name> [command...]"; return 1; }
+    shift
+
+    # Validate the worktree name
+    if ! _gw_validate_name "$name"; then
+        return 1
+    fi
+
+    local worktree_base
+    worktree_base="$(_gw_get_worktree_base)"
+    local worktree_path="$worktree_base/$name"
+
+    # Check if worktree exists
+    if [ ! -d "$worktree_path" ]; then
+        echo "Worktree '$name' doesn't exist, creating it..."
+        if ! _gw_create "$name"; then
+            echo "Failed to create worktree '$name'"
+            return 1
+        fi
+    fi
+
+    # Navigate to the worktree
+    cd "$worktree_path" || return 1
+    echo "Switched to worktree: $name"
+    echo "Current directory: $(pwd)"
+
+    # Run the command if provided
+    if [ $# -gt 0 ]; then
+        echo "Running: $*"
+        exec "$@"
+    fi
+}
+
 # List all worktrees for current repo
 _gw_list() {
     local repo_root
@@ -572,10 +613,10 @@ if [ -n "${BASH_VERSION:-}" ]; then
         if [ "$COMP_CWORD" -eq 1 ]; then
             # Use readarray if available, otherwise fall back to direct assignment
             if command -v mapfile >/dev/null 2>&1; then
-                mapfile -t COMPREPLY < <(compgen -W "create rm remove cd list ls config clean help" -- "$cur")
+                mapfile -t COMPREPLY < <(compgen -W "create rm remove cd go in list ls config clean help" -- "$cur")
             else
                 # shellcheck disable=SC2207
-                COMPREPLY=($(compgen -W "create rm remove cd list ls config clean help" -- "$cur"))
+                COMPREPLY=($(compgen -W "create rm remove cd go in list ls config clean help" -- "$cur"))
             fi
         elif [ "$cmd" = "config" ] && [ "$COMP_CWORD" -eq 2 ]; then
             if command -v mapfile >/dev/null 2>&1; then
@@ -584,7 +625,7 @@ if [ -n "${BASH_VERSION:-}" ]; then
                 # shellcheck disable=SC2207
                 COMPREPLY=($(compgen -W "sibling parent global --global --global-path" -- "$cur"))
             fi
-        elif [[ "$cmd" =~ ^(rm|remove|cd)$ ]] && [ "$COMP_CWORD" -eq 2 ]; then
+        elif [[ "$cmd" =~ ^(rm|remove|cd|go|in)$ ]] && [ "$COMP_CWORD" -eq 2 ]; then
             # Complete with worktree names (safely handle special characters)
             local worktree_base
             worktree_base="$(_gw_get_worktree_base 2>/dev/null)"
@@ -616,6 +657,8 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
                 'rm:Remove a worktree'
                 'remove:Remove a worktree'
                 'cd:Navigate to a worktree'
+                'go:Create worktree if needed, cd to it, run command'
+                'in:Create worktree if needed, cd to it, run command'
                 'list:List all worktrees'
                 'ls:List all worktrees'
                 'config:Configure worktree strategy'
@@ -639,7 +682,7 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
                         _describe 'strategy' strategies
                     fi
                     ;;
-                rm|remove|cd)
+                rm|remove|cd|go|in)
                     if [ "$CURRENT" -eq 3 ]; then
                         local worktree_base
                         worktree_base="$(_gw_get_worktree_base 2>/dev/null)"
